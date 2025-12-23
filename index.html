@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitwarden Export Fixer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #175DDC, #0D47A1);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header img {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            color: #175DDC;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle { color: #666; font-size: 14px; }
+
+        .info-section {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #856404;
+            line-height: 1.5;
+        }
+
+        .info-section p { margin-bottom: 8px; }
+        .info-section ul { margin: 0 0 8px 20px; }
+        .info-section li { margin-bottom: 4px; }
+
+        .upload-area {
+            border: 2px dashed #175DDC;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            background: #e3f2fd;
+            border-color: #0D47A1;
+        }
+
+        .upload-area span { font-size: 48px; display: block; margin-bottom: 10px; }
+
+        button {
+            background: linear-gradient(135deg, #175DDC, #0D47A1);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(23,93,220,0.4);
+        }
+
+        button:disabled { background: #ccc; cursor: not-allowed; }
+
+        .msg {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .msg.success { display: block; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .msg.error { display: block; background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .msg.info { display: block; background: #f8f9fa; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="header">
+            <img src="https://raw.githubusercontent.com/bitwarden/brand/main/icons/256x256.png" alt="Bitwarden">
+            <h1>Bitwarden Export Fixer</h1>
+            <p class="subtitle">Fix password-protected exports from affected mobile app versions</p>
+        </div>
+
+        <div class="info-section">
+            <p><strong>Affected Versions:</strong> Mobile app versions 2025.9 to 2025.12</p>
+            <p><strong>Problem:</strong> Password-protected JSON exports have an incorrectly formatted salt field, preventing import even with the correct password.</p>
+            <p><strong>How to Identify:</strong></p>
+            <ul>
+                <li>You exported from Bitwarden mobile app (versions 2025.9-2025.12)</li>
+                <li>Import fails with "incorrect password" error</li>
+                <li>You're certain the password is correct</li>
+            </ul>
+            <p><strong>Solution:</strong> Upload your JSON file below to fix the salt field.</p>
+        </div>
+
+        <div class="upload-area" id="drop">
+            <span>📁</span>
+            <p><strong>Click to upload</strong> or drag and drop</p>
+            <p style="font-size:12px;color:#999;margin-top:5px">JSON file</p>
+            <input type="file" id="file" accept=".json" hidden>
+        </div>
+
+        <div class="msg info" id="fileInfo"></div>
+        <button id="btn" disabled>Fix and Download</button>
+        <div class="msg" id="status"></div>
+    </div>
+
+    <script>
+        const drop = document.getElementById('drop');
+        const file = document.getElementById('file');
+        const btn = document.getElementById('btn');
+        const status = document.getElementById('status');
+        const fileInfo = document.getElementById('fileInfo');
+
+        let data = null, name = '';
+
+        drop.onclick = () => file.click();
+        drop.ondragover = e => { e.preventDefault(); drop.classList.add('dragover'); };
+        drop.ondragleave = () => drop.classList.remove('dragover');
+        drop.ondrop = e => { e.preventDefault(); drop.classList.remove('dragover'); load(e.dataTransfer.files[0]); };
+        file.onchange = () => file.files[0] && load(file.files[0]);
+
+        function load(f) {
+            name = f.name;
+            status.className = 'msg';
+            const reader = new FileReader();
+            reader.onload = e => {
+                try {
+                    data = JSON.parse(e.target.result);
+                    fileInfo.textContent = `File: ${name} (${(f.size/1024).toFixed(2)} KB)`;
+                    fileInfo.className = 'msg info';
+                    if (data.salt) {
+                        btn.disabled = false;
+                        msg('File loaded. Salt field found.', 'success');
+                    } else {
+                        btn.disabled = true;
+                        msg('No "salt" field found in JSON.', 'error');
+                    }
+                } catch (err) {
+                    btn.disabled = true;
+                    msg('Invalid JSON: ' + err.message, 'error');
+                }
+            };
+            reader.readAsText(f);
+        }
+
+        btn.onclick = () => {
+            if (!data?.salt) return msg('No salt field.', 'error');
+            if (Array.isArray(data.salt)) return msg('File already fixed (salt is an array).', 'error');
+            if (typeof data.salt !== 'string') return msg('Unexpected salt format.', 'error');
+
+            try {
+                const fixed = structuredClone(data);
+                fixed.salt = [...atob(fixed.salt)].map(c => c.charCodeAt(0));
+
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([JSON.stringify(fixed, null, 2)], {type: 'application/json'}));
+                a.download = name.replace(/\.json$/i, '') + '_fixed.json';
+                a.click();
+                URL.revokeObjectURL(a.href);
+
+                msg('✓ File fixed and downloaded!', 'success');
+            } catch (err) {
+                msg('Error: ' + err.message, 'error');
+            }
+        };
+
+        function msg(text, type) {
+            status.textContent = text;
+            status.className = 'msg ' + type;
+        }
+    </script>
+</body>
+</html>
